@@ -1,0 +1,6 @@
+{
+  "name": "FounderForge: 2D Company Simulator",
+  "description": "A deep, full-featured 2D text-based mobile company tycoon and startup management simulation game.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
