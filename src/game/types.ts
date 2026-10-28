@@ -8,6 +8,36 @@ export type FounderTrait =
   | 'design_visionary' // +20% product quality & customer retention
   | 'workaholic';      // +10 company productivity, but morale depletes faster
 
+export type EconomicCycle = 
+  | 'bull_boom'        // +20% Revenue, +25% Valuation multiple
+  | 'stable_growth'    // Baseline
+  | 'rate_hike'        // Higher debt interest, cautious VCs
+  | 'ai_tech_mania'    // +35% VC valuations & viral hype
+  | 'bear_recession';  // -15% Revenue, but -25% rival M&A buyout cost
+
+export interface RegionMarket {
+  id: string;
+  name: string;
+  flag: string;
+  description: string;
+  unlockCost: number;
+  userMultiplier: number; // e.g., 0.25 = +25% user growth
+  revenueMultiplier: number; // e.g., 0.15 = +15% revenue
+  unlocked: boolean;
+}
+
+export interface OfficePerk {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  weeklyCost: number;
+  oneTimeCost: number;
+  moraleBonus: number;
+  productivityBonus: number; // e.g., 0.08 = +8%
+  rentReduction?: number; // e.g., 0.25 = -25% rent
+}
+
 export interface IndustryConfig {
   id: IndustryType;
   name: string;
@@ -200,6 +230,9 @@ export interface CompanyState {
   valuation: number;
   reputation: number; // 0 - 100
   brandAwareness: number; // 0 - 100
+  boardConfidence: number; // 0 - 100
+  economicCycle: EconomicCycle;
+  lastEarningsCallWeek: number;
   
   equityFounder: number; // 0 - 100%
   sharesTotal: number;
@@ -207,6 +240,8 @@ export interface CompanyState {
   isPublic: boolean;
   
   officeLevel: number;
+  activePerkIds: string[];
+  regions: RegionMarket[];
   products: Product[];
   staff: Employee[];
   candidatePool: Candidate[];

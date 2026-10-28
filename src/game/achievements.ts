@@ -44,6 +44,20 @@ export const INITIAL_ACHIEVEMENTS: Achievement[] = [
     unlocked: false,
   },
   {
+    id: 'global_empire',
+    title: 'Multinational Empire',
+    description: 'Expand operations into at least 3 international global market regions.',
+    icon: '🌍',
+    unlocked: false,
+  },
+  {
+    id: 'best_workplace',
+    title: 'Best Place to Work',
+    description: 'Activate at least 3 luxury office culture perks for your employees.',
+    icon: '☕',
+    unlocked: false,
+  },
+  {
     id: 'series_a',
     title: 'Institutional Backing',
     description: 'Raise capital from venture capital investors at a valuation exceeding $5,000,000.',

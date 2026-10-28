@@ -5,15 +5,17 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import { CompanyState, IndustryType, FounderTrait, MarketingCampaign } from './game/types';
+import { CompanyState, IndustryType, FounderTrait } from './game/types';
 import { 
   createInitialCompany, advanceWeek, hireEmployee, fireEmployee, 
-  giveRaise, giveBonus, createProduct, fixBugs, deprecateProduct, 
+  giveRaise, giveBonus, trainEmployee, toggleOfficePerk, unlockRegion,
+  createProduct, fixBugs, deprecateProduct, 
   startResearch, launchCampaign, acceptContract, raiseFunding, 
+  buybackShares, hostEarningsCall,
   takeLoan, repayLoan, upgradeOffice, launchIPO, resolveEvent, 
-  buyoutCompetitor 
+  buyoutCompetitor, sabotageCompetitor, normalizeLegacyState
 } from './game/engine';
-import { playClickSound, playCashSound, playAlertSound, playSuccessSound, playGameOverSound } from './game/audio';
+import { playAlertSound, playSuccessSound, playGameOverSound } from './game/audio';
 
 import { TitleScreen } from './components/TitleScreen';
 import { TopBar } from './components/TopBar';
@@ -28,6 +30,7 @@ import { RivalsTab } from './components/tabs/RivalsTab';
 import { EventModal } from './components/modals/EventModal';
 import { CreateProductModal } from './components/modals/CreateProductModal';
 import { GameOverModal } from './components/modals/GameOverModal';
+import { AchievementsModal } from './components/modals/AchievementsModal';
 
 const SAVE_STORAGE_KEY = 'founder_forge_company_save_v1';
 
@@ -39,6 +42,7 @@ export default function App() {
   // Modals
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false);
+  const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
   const [savedRun, setSavedRun] = useState<CompanyState | null>(null);
 
   // Auto-play timer ref
@@ -60,7 +64,7 @@ export default function App() {
     try {
       const raw = localStorage.getItem(SAVE_STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
+        const parsed = normalizeLegacyState(JSON.parse(raw));
         setSavedRun(parsed);
       }
     } catch {
@@ -102,13 +106,18 @@ export default function App() {
     const initial = createInitialCompany(params);
     setGameState(initial);
     setScreen('playing');
-    handleSaveGame();
+    try {
+      localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(initial));
+      setSavedRun(initial);
+    } catch {
+      // ignore
+    }
   };
 
   // Resume saved game
   const handleLoadSavedGame = () => {
     if (!savedRun) return;
-    setGameState(savedRun);
+    setGameState(normalizeLegacyState(savedRun));
     setScreen('playing');
   };
 
@@ -150,18 +159,19 @@ export default function App() {
         return;
       }
 
-      if (e.code === 'Space' && screen === 'playing' && !isEventModalOpen && !isCreateProductOpen) {
+      if (e.code === 'Space' && screen === 'playing' && !isEventModalOpen && !isCreateProductOpen && !isAchievementsOpen) {
         e.preventDefault();
         handleAdvanceWeek();
       }
       if (e.key === 'Escape') {
         setIsCreateProductOpen(false);
+        setIsAchievementsOpen(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [screen, isEventModalOpen, isCreateProductOpen, gameState]);
+  }, [screen, isEventModalOpen, isCreateProductOpen, isAchievementsOpen, gameState]);
 
   // Auto-play timer effect
   useEffect(() => {
@@ -293,6 +303,7 @@ export default function App() {
           onToggleSound={handleToggleSound}
           onToggleAutoSpeed={handleToggleAutoSpeed}
           onSaveGame={handleSaveGame}
+          onOpenAchievements={() => setIsAchievementsOpen(true)}
         />
 
         {/* Scrollable Tab Area */}
@@ -302,6 +313,7 @@ export default function App() {
               state={gameState}
               onOpenEventModal={() => setIsEventModalOpen(true)}
               onQuickAction={handleQuickAction}
+              onHostEarningsCall={(strategy) => setGameState(prev => prev ? hostEarningsCall(prev, strategy) : prev)}
             />
           )}
 
@@ -339,6 +351,8 @@ export default function App() {
               onFireEmployee={(empId) => setGameState(prev => prev ? fireEmployee(prev, empId) : prev)}
               onGiveRaise={(empId, pct) => setGameState(prev => prev ? giveRaise(prev, empId, pct) : prev)}
               onGiveBonus={(empId, amount) => setGameState(prev => prev ? giveBonus(prev, empId, amount) : prev)}
+              onTrainEmployee={(empId) => setGameState(prev => prev ? trainEmployee(prev, empId) : prev)}
+              onToggleOfficePerk={(perkId) => setGameState(prev => prev ? toggleOfficePerk(prev, perkId) : prev)}
               onUpgradeOffice={() => setGameState(prev => prev ? upgradeOffice(prev) : prev)}
             />
           )}
@@ -348,6 +362,10 @@ export default function App() {
               state={gameState}
               onLaunchCampaign={(channel, cost) => setGameState(prev => prev ? launchCampaign(prev, channel, cost) : prev)}
               onAcceptContract={(contractId) => setGameState(prev => prev ? acceptContract(prev, contractId) : prev)}
+              onUnlockRegion={(regionId) => {
+                setGameState(prev => prev ? unlockRegion(prev, regionId) : prev);
+                confetti({ particleCount: 35, spread: 60, origin: { y: 0.7 } });
+              }}
             />
           )}
 
@@ -358,6 +376,7 @@ export default function App() {
                 setGameState(prev => prev ? raiseFunding(prev, round, eq, val) : prev);
                 confetti({ particleCount: 50, spread: 70, origin: { y: 0.7 } });
               }}
+              onBuybackShares={(eq) => setGameState(prev => prev ? buybackShares(prev, eq) : prev)}
               onTakeLoan={(amount) => setGameState(prev => prev ? takeLoan(prev, amount) : prev)}
               onRepayLoan={(amount) => setGameState(prev => prev ? repayLoan(prev, amount) : prev)}
               onLaunchIPO={() => {
@@ -375,6 +394,7 @@ export default function App() {
                 setGameState(prev => prev ? buyoutCompetitor(prev, compId) : prev);
                 confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
               }}
+              onSabotageCompetitor={(compId, op) => setGameState(prev => prev ? sabotageCompetitor(prev, compId, op) : prev)}
             />
           )}
         </main>
@@ -408,6 +428,14 @@ export default function App() {
             onCreateProduct={(params) => {
               setGameState(prev => prev ? createProduct(prev, params) : prev);
             }}
+          />
+        )}
+
+        {/* Achievements Hall of Fame Modal */}
+        {isAchievementsOpen && (
+          <AchievementsModal
+            state={gameState}
+            onClose={() => setIsAchievementsOpen(false)}
           />
         )}
 

@@ -1,4 +1,4 @@
-import { IndustryConfig, IndustryType, OfficeTier, FounderTrait } from './types';
+import { IndustryConfig, IndustryType, OfficeTier, FounderTrait, OfficePerk, RegionMarket, EconomicCycle } from './types';
 
 export const INDUSTRIES: Record<IndustryType, IndustryConfig> = {
   saas: {
@@ -179,6 +179,179 @@ export const OFFICE_TIERS: OfficeTier[] = [
     description: 'Solar-powered architectural wonder with helicopter pad, gym, amphitheater, and meditation gardens.',
   },
 ];
+
+export const OFFICE_PERKS: OfficePerk[] = [
+  {
+    id: 'espresso_bar',
+    name: 'Artisanal Espresso & Matcha Bar',
+    icon: '☕',
+    description: 'Unlimited nitro cold brew and oat-milk cortados keep engineers caffeinated.',
+    weeklyCost: 200,
+    oneTimeCost: 2500,
+    moraleBonus: 6,
+    productivityBonus: 0.05,
+  },
+  {
+    id: 'remote_hybrid',
+    name: 'Remote-First Flex Policy',
+    icon: '🏠',
+    description: 'Global work-from-anywhere autonomy lowers facility overhead and boosts happiness.',
+    weeklyCost: 0,
+    oneTimeCost: 4000,
+    moraleBonus: 10,
+    productivityBonus: 0.04,
+    rentReduction: 0.25,
+  },
+  {
+    id: 'gourmet_chef',
+    name: 'On-Site Michelin Gourmet Chef',
+    icon: '🍱',
+    description: 'Daily farm-to-table lunches and late-night ramen keep staff at their desks longer.',
+    weeklyCost: 1100,
+    oneTimeCost: 8500,
+    moraleBonus: 14,
+    productivityBonus: 0.12,
+  },
+  {
+    id: 'wellness_spa',
+    name: 'Executive Gym & Cryo-Sauna',
+    icon: '🧘',
+    description: 'On-premise fitness trainers, massage pods, and mental health counseling prevent burnout.',
+    weeklyCost: 750,
+    oneTimeCost: 12000,
+    moraleBonus: 16,
+    productivityBonus: 0.08,
+  },
+  {
+    id: 'ai_workstations',
+    name: 'Liquid-Cooled 8K Dev Rigs',
+    icon: '🖥️',
+    description: 'Top-of-the-line dual-OLED workstations and local GPU clusters for every employee.',
+    weeklyCost: 500,
+    oneTimeCost: 18000,
+    moraleBonus: 8,
+    productivityBonus: 0.18,
+  },
+];
+
+export const INITIAL_REGIONS: RegionMarket[] = [
+  {
+    id: 'na',
+    name: 'North America',
+    flag: '🇺🇸',
+    description: 'Primary domestic tech ecosystem with high enterprise software spend.',
+    unlockCost: 0,
+    userMultiplier: 0,
+    revenueMultiplier: 0,
+    unlocked: true,
+  },
+  {
+    id: 'eu',
+    name: 'European Union',
+    flag: '🇪🇺',
+    description: 'Affluent enterprise market requiring strict GDPR privacy localization.',
+    unlockCost: 25000,
+    userMultiplier: 0.22,
+    revenueMultiplier: 0.18,
+    unlocked: false,
+  },
+  {
+    id: 'apac',
+    name: 'East Asia (Tokyo & Seoul)',
+    flag: '🇯🇵',
+    description: 'Ultra-connected mobile & robotics early adopters with low churn.',
+    unlockCost: 45000,
+    userMultiplier: 0.30,
+    revenueMultiplier: 0.25,
+    unlocked: false,
+  },
+  {
+    id: 'latam',
+    name: 'Latin America',
+    flag: '🇧🇷',
+    description: 'Explosive viral social adoption and rapidly digitizing fintech & consumer base.',
+    unlockCost: 18000,
+    userMultiplier: 0.35,
+    revenueMultiplier: 0.10,
+    unlocked: false,
+  },
+  {
+    id: 'mena',
+    name: 'Middle East Gulf Hubs',
+    flag: '🇦🇪',
+    description: 'Sovereign enterprise contracts and high-net-worth B2B buyers.',
+    unlockCost: 60000,
+    userMultiplier: 0.15,
+    revenueMultiplier: 0.35,
+    unlocked: false,
+  },
+  {
+    id: 'sea_india',
+    name: 'South & Southeast Asia',
+    flag: '🇮🇳',
+    description: 'Massive population scale delivering hundreds of thousands of mobile users.',
+    unlockCost: 35000,
+    userMultiplier: 0.50,
+    revenueMultiplier: 0.15,
+    unlocked: false,
+  },
+];
+
+export const ECONOMIC_CYCLES: Record<EconomicCycle, {
+  name: string;
+  badge: string;
+  description: string;
+  revMultiplier: number;
+  valMultiplier: number;
+  interestRateMultiplier: number;
+  buyoutDiscount: number;
+}> = {
+  stable_growth: {
+    name: 'Stable Expansion',
+    badge: '⚖️ Stable Market',
+    description: 'Balanced macroeconomic environment with predictable consumer & enterprise demand.',
+    revMultiplier: 1.0,
+    valMultiplier: 1.0,
+    interestRateMultiplier: 1.0,
+    buyoutDiscount: 1.0,
+  },
+  bull_boom: {
+    name: 'Bull Market Boom',
+    badge: '🐂 Bull Boom (+20% Rev)',
+    description: 'Record corporate spending and investor optimism drive +20% revenue and +25% valuations.',
+    revMultiplier: 1.20,
+    valMultiplier: 1.25,
+    interestRateMultiplier: 0.85,
+    buyoutDiscount: 1.15,
+  },
+  ai_tech_mania: {
+    name: 'Tech Hype Supercycle',
+    badge: '🚀 Tech Mania (+35% Val)',
+    description: 'FOMO sweeps Silicon Valley! Venture valuations surge +35% and viral user growth accelerates.',
+    revMultiplier: 1.15,
+    valMultiplier: 1.35,
+    interestRateMultiplier: 1.0,
+    buyoutDiscount: 1.20,
+  },
+  rate_hike: {
+    name: 'Central Bank Rate Hike',
+    badge: '🏦 High Interest Rates',
+    description: 'Tightened monetary policy increases debt interest by 50% and compresses VC multiples.',
+    revMultiplier: 0.95,
+    valMultiplier: 0.88,
+    interestRateMultiplier: 1.5,
+    buyoutDiscount: 0.9,
+  },
+  bear_recession: {
+    name: 'Macro Bear Slump',
+    badge: '🐻 Bear Market (-25% M&A Cost)',
+    description: 'Enterprise budgets tighten (-12% revenue), but distressed rivals can be acquired 25% cheaper!',
+    revMultiplier: 0.88,
+    valMultiplier: 0.82,
+    interestRateMultiplier: 1.2,
+    buyoutDiscount: 0.75,
+  },
+};
 
 export const CANDIDATE_NAMES: Record<string, string[]> = {
   first: ['Alex', 'Elena', 'Marcus', 'Samantha', 'David', 'Chloe', 'Jin', 'Priya', 'Leo', 'Tara', 'Dante', 'Maya', 'Nico', 'Siddharth', 'Zoe', 'Julian', 'Freya', 'Kai', 'Amara', 'Lucas'],

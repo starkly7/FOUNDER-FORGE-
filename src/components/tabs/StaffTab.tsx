@@ -1,10 +1,10 @@
 import React from 'react';
-import { CompanyState, Employee, Candidate } from '../../game/types';
-import { OFFICE_TIERS } from '../../game/constants';
-import { playClickSound, playCashSound } from '../../game/audio';
+import { CompanyState, Employee } from '../../game/types';
+import { OFFICE_TIERS, OFFICE_PERKS } from '../../game/constants';
+import { playClickSound, playCashSound, playSuccessSound } from '../../game/audio';
 import { 
-  Users, Building2, UserPlus, Award, DollarSign, 
-  ArrowUpCircle, Heart, UserMinus, ShieldAlert, Sparkles 
+  Users, Building2, UserPlus, ArrowUpCircle, 
+  Heart, Sparkles, GraduationCap, Coffee, Check 
 } from 'lucide-react';
 
 interface StaffTabProps {
@@ -13,6 +13,8 @@ interface StaffTabProps {
   onFireEmployee: (employeeId: string) => void;
   onGiveRaise: (employeeId: string, pct: number) => void;
   onGiveBonus: (employeeId: string, amount: number) => void;
+  onTrainEmployee: (employeeId: string) => void;
+  onToggleOfficePerk: (perkId: string) => void;
   onUpgradeOffice: () => void;
 }
 
@@ -22,6 +24,8 @@ export const StaffTab: React.FC<StaffTabProps> = ({
   onFireEmployee,
   onGiveRaise,
   onGiveBonus,
+  onTrainEmployee,
+  onToggleOfficePerk,
   onUpgradeOffice,
 }) => {
   const currentOffice = OFFICE_TIERS[state.officeLevel] || OFFICE_TIERS[0];
@@ -112,7 +116,7 @@ export const StaffTab: React.FC<StaffTabProps> = ({
           <div className="text-base font-black text-emerald-400 font-mono mt-0.5">
             {avgMorale}%
           </div>
-          <div className="text-[10px] text-slate-400">Peak Productivity</div>
+          <div className="text-[10px] text-slate-400">{state.activePerkIds.length} Perks Active</div>
         </div>
       </div>
 
@@ -147,7 +151,7 @@ export const StaffTab: React.FC<StaffTabProps> = ({
                   <div className="text-xs font-mono font-bold text-white">
                     ${emp.salaryPerWeek.toLocaleString()}/wk
                   </div>
-                  <div className="text-[10px] text-slate-400 font-mono">Skill: {emp.skill}/100</div>
+                  <div className="text-[10px] text-emerald-400 font-mono font-bold">Skill: {emp.skill}/100</div>
                 </div>
               </div>
 
@@ -169,16 +173,16 @@ export const StaffTab: React.FC<StaffTabProps> = ({
                 </div>
               </div>
 
-              {/* Staff Management Buttons */}
-              <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-800/80">
-                <div className="flex items-center gap-1.5">
+              {/* Staff Management & Training Buttons */}
+              <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center gap-1 flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
                       playCashSound(state.settings.soundEnabled);
                       onGiveRaise(emp.id, 10);
                     }}
-                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-md border border-slate-700 transition"
+                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-medium rounded-md border border-slate-700 transition"
                   >
                     +10% Raise
                   </button>
@@ -189,9 +193,21 @@ export const StaffTab: React.FC<StaffTabProps> = ({
                       playCashSound(state.settings.soundEnabled);
                       onGiveBonus(emp.id, 2500);
                     }}
-                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-[11px] font-medium rounded-md border border-slate-700 transition"
+                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-[10px] font-medium rounded-md border border-slate-700 transition"
                   >
                     $2.5k Bonus
+                  </button>
+                  <button
+                    type="button"
+                    disabled={state.cash < 3500 || emp.skill >= 99}
+                    onClick={() => {
+                      playSuccessSound(state.settings.soundEnabled);
+                      onTrainEmployee(emp.id);
+                    }}
+                    className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 disabled:opacity-40 text-cyan-300 text-[10px] font-bold rounded-md border border-cyan-800 flex items-center gap-1 transition"
+                  >
+                    <GraduationCap className="w-3 h-3" />
+                    <span>Train ($3.5k)</span>
                   </button>
                 </div>
 
@@ -202,9 +218,9 @@ export const StaffTab: React.FC<StaffTabProps> = ({
                     playClickSound(state.settings.soundEnabled);
                     onFireEmployee(emp.id);
                   }}
-                  className="px-2 py-1 text-slate-500 hover:text-rose-400 text-[11px] font-medium rounded-md transition"
+                  className="px-2 py-1 text-slate-500 hover:text-rose-400 text-[10px] font-medium rounded-md transition"
                 >
-                  Fire (2w pay)
+                  Fire
                 </button>
               </div>
             </div>
@@ -270,6 +286,78 @@ export const StaffTab: React.FC<StaffTabProps> = ({
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>Hire Candidate</span>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Workplace Culture & Office Perks Lab */}
+      <div className="space-y-2">
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+          <Coffee className="w-3.5 h-3.5 text-amber-400" />
+          <span>Workplace Culture & Perks Lab</span>
+        </div>
+
+        {OFFICE_PERKS.map((perk) => {
+          const isActive = state.activePerkIds.includes(perk.id);
+          const canAfford = state.cash >= perk.oneTimeCost;
+
+          return (
+            <div
+              key={perk.id}
+              className={`border rounded-xl p-3 space-y-2 shadow-md transition ${
+                isActive
+                  ? 'bg-emerald-950/20 border-emerald-700/60'
+                  : 'bg-slate-900/90 border-slate-800'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-2">
+                  <span className="text-lg">{perk.icon}</span>
+                  <div>
+                    <div className="font-bold text-xs text-white">{perk.name}</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{perk.description}</p>
+                    <div className="text-[10px] text-emerald-400 font-mono mt-1">
+                      +{perk.moraleBonus} Morale · +{Math.round(perk.productivityBonus * 100)}% Output
+                      {perk.rentReduction ? ` · -${Math.round(perk.rentReduction * 100)}% Rent` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xs font-mono font-bold text-white">
+                    ${perk.oneTimeCost.toLocaleString()}
+                  </div>
+                  <div className="text-[10px] text-slate-400">${perk.weeklyCost}/wk</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  disabled={!isActive && !canAfford}
+                  onClick={() => {
+                    playCashSound(state.settings.soundEnabled);
+                    onToggleOfficePerk(perk.id);
+                  }}
+                  className={`font-bold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 transition active:scale-95 ${
+                    isActive
+                      ? 'bg-slate-800 hover:bg-rose-950 text-emerald-400 hover:text-rose-300 border border-emerald-700/50'
+                      : 'bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950'
+                  }`}
+                >
+                  {isActive ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Active (Tap to Suspend)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Install Perk (${perk.oneTimeCost.toLocaleString()})</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

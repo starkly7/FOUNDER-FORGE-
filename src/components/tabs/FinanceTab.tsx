@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { CompanyState } from '../../game/types';
 import { playClickSound, playCashSound, playSuccessSound } from '../../game/audio';
 import { 
-  DollarSign, Landmark, PieChart, TrendingUp, 
-  TrendingDown, ShieldCheck, ArrowRight, Bell, Sparkles, Building 
+  DollarSign, Landmark, PieChart, Bell, Sparkles, RefreshCw 
 } from 'lucide-react';
 
 interface FinanceTabProps {
   state: CompanyState;
   onRaiseFunding: (roundName: string, equityPct: number, valuation: number) => void;
+  onBuybackShares: (equityPct: number) => void;
   onTakeLoan: (amount: number) => void;
   onRepayLoan: (amount: number) => void;
   onLaunchIPO: () => void;
@@ -17,6 +17,7 @@ interface FinanceTabProps {
 export const FinanceTab: React.FC<FinanceTabProps> = ({
   state,
   onRaiseFunding,
+  onBuybackShares,
   onTakeLoan,
   onRepayLoan,
   onLaunchIPO,
@@ -48,6 +49,9 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
 
   const eligibleRound = getEligibleRound();
   const projectedCashInjection = Math.round(eligibleRound.baseVal * (selectedEquity / 100));
+
+  const buybackCost5Pct = Math.round(state.valuation * 0.05 * 1.05);
+  const canBuyback = state.equityFounder <= 95 && state.cash >= buybackCost5Pct;
 
   const canIPO = !state.isPublic && state.valuation >= 30000000;
 
@@ -84,7 +88,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <span className="font-mono text-rose-400">-${exp.marketing.toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-slate-400 pl-2">
-            <span>· Headquarters Office Rent</span>
+            <span>· Headquarters & Perks</span>
             <span className="font-mono text-rose-400">-${exp.office.toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-slate-400 pl-2">
@@ -110,7 +114,7 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider">
             <PieChart className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Venture Capital Term Sheet</span>
+            <span>Venture Capital & Equity</span>
           </div>
           <span className="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-2 py-0.5 rounded font-mono">
             {eligibleRound.name}
@@ -169,6 +173,28 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <Sparkles className="w-3.5 h-3.5" />
             <span>Sign Term Sheet & Close Round</span>
           </button>
+
+          {/* Share Buyback Program */}
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold text-white">Share Buyback (5% Equity)</div>
+              <div className="text-[10px] text-slate-400 font-mono">
+                Cost: ${buybackCost5Pct.toLocaleString()} · Reclaim Ownership
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={!canBuyback}
+              onClick={() => {
+                playSuccessSound(state.settings.soundEnabled);
+                onBuybackShares(5);
+              }}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-cyan-400 font-bold text-xs rounded-lg border border-slate-700 flex items-center gap-1 transition shrink-0"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Buyback 5%</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -185,7 +211,6 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          {/* Borrow */}
           <button
             type="button"
             disabled={state.debt + 25000 > maxLoanCapacity}
@@ -200,7 +225,6 @@ export const FinanceTab: React.FC<FinanceTabProps> = ({
             <div className="text-[9px] text-slate-400 mt-1">~0.4%/wk interest</div>
           </button>
 
-          {/* Repay */}
           <button
             type="button"
             disabled={state.debt === 0 || state.cash < 25000}

@@ -8,9 +8,18 @@ import {
   Product, 
   WeeklyFinancialSnapshot, 
   GameLog, 
-  MarketingCampaign 
+  MarketingCampaign,
+  EconomicCycle
 } from './types';
-import { INDUSTRIES, FOUNDER_TRAITS, OFFICE_TIERS, CANDIDATE_NAMES, STAFF_TRAITS } from './constants';
+import { 
+  INDUSTRIES, 
+  OFFICE_TIERS, 
+  OFFICE_PERKS, 
+  INITIAL_REGIONS, 
+  ECONOMIC_CYCLES, 
+  CANDIDATE_NAMES, 
+  STAFF_TRAITS 
+} from './constants';
 import { TECH_TREE } from './techTree';
 import { INITIAL_COMPETITORS } from './competitors';
 import { INITIAL_ACHIEVEMENTS } from './achievements';
@@ -82,6 +91,7 @@ export function createInitialCompany(options: {
 
   const initialCompetitors = JSON.parse(JSON.stringify(INITIAL_COMPETITORS[industry]));
   const initialAchievements = JSON.parse(JSON.stringify(INITIAL_ACHIEVEMENTS));
+  const initialRegions = JSON.parse(JSON.stringify(INITIAL_REGIONS));
 
   const state: CompanyState = {
     companyName: companyName.trim() || 'NovaForge Inc.',
@@ -94,11 +104,16 @@ export function createInitialCompany(options: {
     valuation: initialValuation,
     reputation: 60,
     brandAwareness: 25,
+    boardConfidence: 78,
+    economicCycle: 'stable_growth',
+    lastEarningsCallWeek: 0,
     equityFounder: 100,
     sharesTotal: 1000000,
     sharePrice: initialValuation / 1000000,
     isPublic: false,
     officeLevel: 0, // Garage
+    activePerkIds: [],
+    regions: initialRegions,
     products: [starterProduct],
     staff: [foundingEmployee],
     candidatePool: initialCandidates,
@@ -130,6 +145,17 @@ export function createInitialCompany(options: {
   };
 
   return state;
+}
+
+export function normalizeLegacyState(rawState: CompanyState): CompanyState {
+  return {
+    ...rawState,
+    boardConfidence: rawState.boardConfidence ?? 78,
+    economicCycle: rawState.economicCycle ?? 'stable_growth',
+    lastEarningsCallWeek: rawState.lastEarningsCallWeek ?? 0,
+    activePerkIds: rawState.activePerkIds ?? [],
+    regions: rawState.regions ?? JSON.parse(JSON.stringify(INITIAL_REGIONS)),
+  };
 }
 
 export function generateCandidate(specificRole?: StaffRole, week: number = 1): Candidate {
@@ -194,19 +220,37 @@ export function generateContract(industry: IndustryType, week: number = 1): Cont
 export function advanceWeek(prevState: CompanyState): CompanyState {
   if (prevState.isGameOver) return prevState;
 
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const week = state.week + 1;
   state.week = week;
 
   const logs: GameLog[] = [];
 
-  // 1. Tech Tree bonus calculations
+  // 0. Macro-Economic Cycle Shifts (Every 12 weeks)
+  if (week % 12 === 0) {
+    const cycles: EconomicCycle[] = ['stable_growth', 'bull_boom', 'ai_tech_mania', 'rate_hike', 'bear_recession'];
+    const nextCycle = cycles[Math.floor(Math.random() * cycles.length)];
+    if (nextCycle !== state.economicCycle) {
+      state.economicCycle = nextCycle;
+      const cycleInfo = ECONOMIC_CYCLES[nextCycle];
+      logs.push({
+        id: 'log_macro_' + week,
+        week,
+        type: nextCycle === 'bull_boom' || nextCycle === 'ai_tech_mania' ? 'success' : nextCycle === 'bear_recession' ? 'warning' : 'info',
+        message: `🌍 Macro Shift: Global markets entered "${cycleInfo.name}" — ${cycleInfo.description}`,
+      });
+    }
+  }
+
+  const macro = ECONOMIC_CYCLES[state.economicCycle] || ECONOMIC_CYCLES.stable_growth;
+
+  // 1. Tech Tree & Global Regions & Office Perks bonus calculations
   let rdSpeedBonus = 0;
   let churnReduction = 0;
   let qualityBonus = 0;
   let serverCostReduction = 0;
   let viralMultiplier = 1.0;
-  let revenueMultiplier = 1.0;
+  let revenueMultiplier = macro.revMultiplier;
 
   for (const techId of state.unlockedTechIds) {
     const node = TECH_TREE.find(t => t.id === techId);
@@ -220,8 +264,33 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
     }
   }
 
+  // Regional multipliers
+  for (const reg of state.regions) {
+    if (reg.unlocked) {
+      viralMultiplier += reg.userMultiplier;
+      revenueMultiplier += reg.revenueMultiplier;
+    }
+  }
+
+  // Office Perks bonuses
+  let perkMoraleBonus = 0;
+  let perkProductivityBonus = 0;
+  let perkWeeklyCost = 0;
+  let rentReduction = 0;
+
+  for (const perkId of state.activePerkIds) {
+    const perk = OFFICE_PERKS.find(p => p.id === perkId);
+    if (perk) {
+      perkMoraleBonus += perk.moraleBonus;
+      perkProductivityBonus += perk.productivityBonus;
+      perkWeeklyCost += perk.weeklyCost;
+      if (perk.rentReduction) rentReduction += perk.rentReduction;
+    }
+  }
+
   if (state.founderTrait === 'code_wizard') rdSpeedBonus += 0.25;
   if (state.founderTrait === 'growth_hacker') viralMultiplier += 0.35;
+  if (state.founderTrait === 'workaholic') perkProductivityBonus += 0.15;
   if (state.founderTrait === 'design_visionary') {
     qualityBonus += 15;
     churnReduction += 0.03;
@@ -235,15 +304,15 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
   let totalQASkill = 0;
 
   const office = OFFICE_TIERS[state.officeLevel] || OFFICE_TIERS[0];
-  const officeMoraleMod = office.moraleBonus;
+  const officeMoraleMod = office.moraleBonus + perkMoraleBonus;
 
   for (const emp of state.staff) {
-    // Morale drift towards office base
+    // Morale drift towards office + perk base
     let targetMorale = 80 + officeMoraleMod;
     if (emp.trait === 'Morale Booster') targetMorale += 10;
-    emp.morale = Math.max(10, Math.min(100, Math.round(emp.morale * 0.95 + targetMorale * 0.05)));
+    emp.morale = Math.max(10, Math.min(100, Math.round(emp.morale * 0.94 + targetMorale * 0.06)));
 
-    const effectiveSkill = (emp.skill * (emp.morale / 100)) * (emp.trait === '10x Coder' ? 1.5 : 1.0);
+    const effectiveSkill = (emp.skill * (emp.morale / 100)) * (emp.trait === '10x Coder' ? 1.5 : 1.0) * (1 + perkProductivityBonus);
 
     if (emp.role === 'engineer') totalEngineeringSkill += effectiveSkill;
     else if (emp.role === 'designer') totalDesignSkill += effectiveSkill;
@@ -270,6 +339,7 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
       if (prod.developmentProgress >= 100) {
         prod.status = 'live';
         prod.activeUsers = 120 + Math.floor(Math.random() * 200);
+        state.boardConfidence = Math.min(100, state.boardConfidence + 6);
         logs.push({
           id: 'log_prod_live_' + prod.id,
           week,
@@ -375,6 +445,7 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
       const payout = Math.round(contract.payout * bonus);
       contractRevenueThisWeek += payout;
       state.reputation = Math.min(100, state.reputation + 4);
+      state.boardConfidence = Math.min(100, state.boardConfidence + 3);
       logs.push({
         id: 'log_contract_done_' + contract.id,
         week,
@@ -385,6 +456,7 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
       // Failed deadline
       state.cash = Math.max(0, state.cash - contract.penaltyOnFailure);
       state.reputation = Math.max(10, state.reputation - 8);
+      state.boardConfidence = Math.max(10, state.boardConfidence - 6);
       logs.push({
         id: 'log_contract_fail_' + contract.id,
         week,
@@ -407,6 +479,7 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
       state.unlockedTechIds.push(finishedTechId);
       const finishedTech = TECH_TREE.find(t => t.id === finishedTechId);
       state.activeResearch = null;
+      state.boardConfidence = Math.min(100, state.boardConfidence + 5);
       logs.push({
         id: 'log_tech_unlock_' + finishedTechId + '_' + week,
         week,
@@ -424,8 +497,8 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
     payrollTotal += emp.salaryPerWeek;
   }
 
-  const officeRent = office.weeklyRent;
-  const loanInterest = Math.round(state.debt * 0.004); // ~0.4% weekly interest (~20% APR)
+  const officeRent = Math.round(office.weeklyRent * Math.max(0.25, 1 - rentReduction)) + perkWeeklyCost;
+  const loanInterest = Math.round(state.debt * 0.004 * macro.interestRateMultiplier);
   const taxableProfit = Math.max(0, totalRevenue - payrollTotal - serverTotalCost - marketingWeeklySpend - officeRent - loanInterest);
   const taxes = Math.round(taxableProfit * 0.15); // 15% corporate tax
 
@@ -433,6 +506,13 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
   const netIncome = totalRevenue - totalExpenses;
 
   state.cash += netIncome;
+
+  // Adjust Board Confidence slightly based on cash flow
+  if (netIncome > 0) {
+    state.boardConfidence = Math.min(100, state.boardConfidence + 1);
+  } else if (state.cash < 15000) {
+    state.boardConfidence = Math.max(5, state.boardConfidence - 2);
+  }
 
   // 8. Financial History Snapshot
   const snapshot: WeeklyFinancialSnapshot = {
@@ -460,7 +540,7 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
   // 9. Update Valuation & Competitors
   const annualizedRevenue = totalRevenue * 52;
   const indMultiplier = INDUSTRIES[state.industry].marginMultiplier;
-  const growthMultiplier = state.brandAwareness / 30 + 1.2;
+  const growthMultiplier = (state.brandAwareness / 30 + 1.2) * macro.valMultiplier;
   const calculatedValuation = Math.max(
     500000,
     Math.round((annualizedRevenue * (4 + indMultiplier) * growthMultiplier) + (state.cash * 1.5))
@@ -512,6 +592,9 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
   }
 
   // 11. Check Achievements
+  const competitorTotalVal = state.competitors.reduce((acc, c) => acc + (c.health !== 'acquired' ? c.valuation : 0), 0);
+  const companyMarketShare = Math.round((state.valuation / (competitorTotalVal + state.valuation)) * 100);
+
   for (const ach of state.achievements) {
     if (!ach.unlocked) {
       let shouldUnlock = false;
@@ -521,11 +604,15 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
       if (ach.id === 'ramen_profitable' && netIncome > 0 && totalRevenue > 2000) shouldUnlock = true;
       if (ach.id === 'upgrade_office' && state.officeLevel >= 1) shouldUnlock = true;
       if (ach.id === 'ten_k_users' && state.products.reduce((acc, p) => acc + p.activeUsers, 0) >= 10000) shouldUnlock = true;
+      if (ach.id === 'global_empire' && state.regions.filter(r => r.unlocked).length >= 3) shouldUnlock = true;
+      if (ach.id === 'best_workplace' && state.activePerkIds.length >= 3) shouldUnlock = true;
       if (ach.id === 'series_a' && state.valuation >= 5000000) shouldUnlock = true;
       if (ach.id === 'tech_pioneer' && state.unlockedTechIds.length >= 5) shouldUnlock = true;
+      if (ach.id === 'hostile_takeover' && state.competitors.some(c => c.health === 'acquired')) shouldUnlock = true;
       if (ach.id === 'one_hundred_k_revenue' && totalRevenue >= 50000) shouldUnlock = true;
       if (ach.id === 'unicorn_status' && state.valuation >= 1000000000) shouldUnlock = true;
       if (ach.id === 'ring_the_bell' && state.isPublic) shouldUnlock = true;
+      if (ach.id === 'market_monopoly' && companyMarketShare >= 60) shouldUnlock = true;
       if (ach.id === 'centurion' && week >= 104) shouldUnlock = true;
 
       if (shouldUnlock) {
@@ -542,7 +629,6 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
   }
 
   // 12. Check Bankruptcy Condition
-  // If cash drops below -$20,000 and debt is high or cannot pay salaries
   if (state.cash < -25000) {
     state.isGameOver = true;
     state.gameOverReason = 'Insolvency Bankruptcy: Your corporate accounts were frozen by creditors due to severe negative cash balance.';
@@ -561,7 +647,7 @@ export function advanceWeek(prevState: CompanyState): CompanyState {
 }
 
 export function hireEmployee(prevState: CompanyState, candidateId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const candidateIndex = state.candidatePool.findIndex(c => c.id === candidateId);
   if (candidateIndex === -1) return prevState;
 
@@ -590,7 +676,7 @@ export function hireEmployee(prevState: CompanyState, candidateId: string): Comp
 }
 
 export function fireEmployee(prevState: CompanyState, employeeId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const index = state.staff.findIndex(e => e.id === employeeId);
   if (index === -1) return prevState;
 
@@ -615,7 +701,7 @@ export function fireEmployee(prevState: CompanyState, employeeId: string): Compa
 }
 
 export function giveRaise(prevState: CompanyState, employeeId: string, percentage: number): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const emp = state.staff.find(e => e.id === employeeId);
   if (!emp) return prevState;
 
@@ -634,7 +720,7 @@ export function giveRaise(prevState: CompanyState, employeeId: string, percentag
 }
 
 export function giveBonus(prevState: CompanyState, employeeId: string, amount: number): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   if (state.cash < amount) return prevState;
 
   const emp = state.staff.find(e => e.id === employeeId);
@@ -653,6 +739,92 @@ export function giveBonus(prevState: CompanyState, employeeId: string, amount: n
   return state;
 }
 
+export function trainEmployee(prevState: CompanyState, employeeId: string): CompanyState {
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
+  const cost = 3500;
+  if (state.cash < cost) return prevState;
+
+  const emp = state.staff.find(e => e.id === employeeId);
+  if (!emp || emp.skill >= 99) return prevState;
+
+  state.cash -= cost;
+  const skillGain = Math.min(99 - emp.skill, 7);
+  emp.skill += skillGain;
+  emp.morale = Math.min(100, emp.morale + 12);
+
+  state.logs.unshift({
+    id: 'log_train_' + Math.random().toString(36).substring(2, 7),
+    week: state.week,
+    type: 'success',
+    message: `🎓 ${emp.name} completed Executive Bootcamp! Skill rose +${skillGain} to ${emp.skill}/100.`,
+  });
+
+  return state;
+}
+
+export function toggleOfficePerk(prevState: CompanyState, perkId: string): CompanyState {
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
+  const perk = OFFICE_PERKS.find(p => p.id === perkId);
+  if (!perk) return prevState;
+
+  const existingIdx = state.activePerkIds.indexOf(perkId);
+  if (existingIdx !== -1) {
+    // Deactivate perk
+    state.activePerkIds.splice(existingIdx, 1);
+    state.logs.unshift({
+      id: 'log_perk_off_' + Math.random().toString(36).substring(2, 7),
+      week: state.week,
+      type: 'warning',
+      message: `Suspended office perk: "${perk.name}".`,
+    });
+  } else {
+    // Activate perk
+    if (state.cash < perk.oneTimeCost) return prevState;
+    state.cash -= perk.oneTimeCost;
+    state.activePerkIds.push(perkId);
+    for (const emp of state.staff) {
+      emp.morale = Math.min(100, emp.morale + perk.moraleBonus);
+    }
+    state.logs.unshift({
+      id: 'log_perk_on_' + Math.random().toString(36).substring(2, 7),
+      week: state.week,
+      type: 'success',
+      message: `${perk.icon} Installed "${perk.name}"! Team morale +${perk.moraleBonus} & productivity +${Math.round(perk.productivityBonus * 100)}%.`,
+    });
+  }
+
+  return state;
+}
+
+export function unlockRegion(prevState: CompanyState, regionId: string): CompanyState {
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
+  const reg = state.regions.find(r => r.id === regionId);
+  if (!reg || reg.unlocked) return prevState;
+
+  if (state.cash < reg.unlockCost) return prevState;
+
+  state.cash -= reg.unlockCost;
+  reg.unlocked = true;
+  state.brandAwareness = Math.min(100, state.brandAwareness + 10);
+  state.boardConfidence = Math.min(100, state.boardConfidence + 6);
+
+  // Immediate regional user boost on live products
+  for (const prod of state.products) {
+    if (prod.status === 'live') {
+      prod.activeUsers += Math.round(450 * (1 + reg.userMultiplier));
+    }
+  }
+
+  state.logs.unshift({
+    id: 'log_region_' + Math.random().toString(36).substring(2, 7),
+    week: state.week,
+    type: 'success',
+    message: `${reg.flag} Global Expansion: Launched localized operations in ${reg.name}!`,
+  });
+
+  return state;
+}
+
 export function createProduct(
   prevState: CompanyState,
   params: {
@@ -663,7 +835,7 @@ export function createProduct(
     features: Product['features'];
   }
 ): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   
   const setupFee = 15000;
   if (state.cash < setupFee) return prevState;
@@ -702,7 +874,7 @@ export function createProduct(
 }
 
 export function fixBugs(prevState: CompanyState, productId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const prod = state.products.find(p => p.id === productId);
   if (!prod) return prevState;
 
@@ -724,7 +896,7 @@ export function fixBugs(prevState: CompanyState, productId: string): CompanyStat
 }
 
 export function deprecateProduct(prevState: CompanyState, productId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const prod = state.products.find(p => p.id === productId);
   if (!prod) return prevState;
 
@@ -743,7 +915,7 @@ export function deprecateProduct(prevState: CompanyState, productId: string): Co
 }
 
 export function startResearch(prevState: CompanyState, techId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const tech = TECH_TREE.find(t => t.id === techId);
   if (!tech) return prevState;
 
@@ -777,7 +949,7 @@ export function launchCampaign(
   channel: MarketingCampaign['channel'], 
   weeklyCost: number
 ): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   if (state.cash < weeklyCost) return prevState;
 
   const efficiencies: Record<MarketingCampaign['channel'], { name: string; eff: number; weeks: number }> = {
@@ -812,7 +984,7 @@ export function launchCampaign(
 }
 
 export function acceptContract(prevState: CompanyState, contractId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const idx = state.availableContracts.findIndex(c => c.id === contractId);
   if (idx === -1) return prevState;
 
@@ -836,13 +1008,14 @@ export function raiseFunding(
   equityPercent: number,
   valuation: number
 ): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   if (state.equityFounder < equityPercent) return prevState;
 
   const capitalRaised = Math.round(valuation * (equityPercent / 100));
   state.cash += capitalRaised;
   state.equityFounder -= equityPercent;
   state.valuation = Math.max(state.valuation, valuation);
+  state.boardConfidence = Math.min(100, state.boardConfidence + 10);
 
   state.logs.unshift({
     id: 'log_funding_' + Math.random().toString(36).substring(2, 7),
@@ -854,8 +1027,96 @@ export function raiseFunding(
   return state;
 }
 
+export function buybackShares(prevState: CompanyState, equityPct: number = 5): CompanyState {
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
+  if (state.equityFounder + equityPct > 100) return prevState;
+
+  const buybackCost = Math.round(state.valuation * (equityPct / 100) * 1.05);
+  if (state.cash < buybackCost) return prevState;
+
+  state.cash -= buybackCost;
+  state.equityFounder += equityPct;
+  state.boardConfidence = Math.min(100, state.boardConfidence + 8);
+  if (state.isPublic) {
+    state.sharePrice = +(state.sharePrice * 1.06).toFixed(2);
+    state.valuation = Math.round(state.sharePrice * state.sharesTotal);
+  }
+
+  state.logs.unshift({
+    id: 'log_buyback_' + Math.random().toString(36).substring(2, 7),
+    week: state.week,
+    type: 'success',
+    message: `💎 Stock Buyback: Repurchased ${equityPct}% company equity for $${buybackCost.toLocaleString()}. Founder stake now ${state.equityFounder}%!`,
+  });
+
+  return state;
+}
+
+export function hostEarningsCall(
+  prevState: CompanyState,
+  strategy: 'conservative' | 'balanced' | 'audacious'
+): CompanyState {
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
+  if (state.week - state.lastEarningsCallWeek < 6 && state.lastEarningsCallWeek !== 0) {
+    return prevState; // Cooldown of 6 weeks
+  }
+
+  state.lastEarningsCallWeek = state.week;
+
+  if (strategy === 'conservative') {
+    state.boardConfidence = Math.min(100, state.boardConfidence + 8);
+    state.reputation = Math.min(100, state.reputation + 5);
+    state.valuation = Math.round(state.valuation * 1.05);
+    state.logs.unshift({
+      id: 'log_earnings_' + Date.now(),
+      week: state.week,
+      type: 'success',
+      message: '📊 Investor Relations Call: Delivered disciplined guidance. Board confidence +8% & Valuation +5%.',
+    });
+  } else if (strategy === 'balanced') {
+    state.boardConfidence = Math.min(100, state.boardConfidence + 12);
+    state.brandAwareness = Math.min(100, state.brandAwareness + 8);
+    state.valuation = Math.round(state.valuation * 1.12);
+    state.logs.unshift({
+      id: 'log_earnings_' + Date.now(),
+      week: state.week,
+      type: 'success',
+      message: '📈 Investor Keynote: Strong product roadmap impressed analysts! Valuation +12%.',
+    });
+  } else {
+    // Audacious hype forecast
+    const success = state.reputation >= 55;
+    if (success) {
+      state.valuation = Math.round(state.valuation * 1.25);
+      state.brandAwareness = Math.min(100, state.brandAwareness + 15);
+      state.boardConfidence = Math.min(100, state.boardConfidence + 15);
+      state.logs.unshift({
+        id: 'log_earnings_' + Date.now(),
+        week: state.week,
+        type: 'success',
+        message: '🚀 Viral Keynote: Audacious moonshot guidance sparked investor frenzy! Valuation surged +25%!',
+      });
+    } else {
+      state.boardConfidence = Math.max(10, state.boardConfidence - 10);
+      state.valuation = Math.round(state.valuation * 0.92);
+      state.logs.unshift({
+        id: 'log_earnings_' + Date.now(),
+        week: state.week,
+        type: 'warning',
+        message: '⚠️ Skeptical Analysts: Wall Street questioned your aggressive hype claims. Valuation dipped -8%.',
+      });
+    }
+  }
+
+  if (state.isPublic) {
+    state.sharePrice = +(state.valuation / state.sharesTotal).toFixed(2);
+  }
+
+  return state;
+}
+
 export function takeLoan(prevState: CompanyState, amount: number): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const maxLoan = Math.max(50000, Math.round(state.valuation * 0.3));
   if (state.debt + amount > maxLoan) return prevState;
 
@@ -873,7 +1134,7 @@ export function takeLoan(prevState: CompanyState, amount: number): CompanyState 
 }
 
 export function repayLoan(prevState: CompanyState, amount: number): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const repayAmount = Math.min(amount, state.debt);
   if (state.cash < repayAmount) return prevState;
 
@@ -891,7 +1152,7 @@ export function repayLoan(prevState: CompanyState, amount: number): CompanyState
 }
 
 export function upgradeOffice(prevState: CompanyState): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const nextLevel = state.officeLevel + 1;
   const nextOffice = OFFICE_TIERS[nextLevel];
   if (!nextOffice) return prevState;
@@ -917,7 +1178,7 @@ export function upgradeOffice(prevState: CompanyState): CompanyState {
 }
 
 export function launchIPO(prevState: CompanyState): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   if (state.isPublic) return prevState;
   if (state.valuation < 30000000) return prevState; // $30M min valuation to IPO
 
@@ -927,6 +1188,7 @@ export function launchIPO(prevState: CompanyState): CompanyState {
   state.cash += publicCash;
   state.equityFounder = Math.max(10, state.equityFounder - 20);
   state.sharePrice = +(state.valuation / state.sharesTotal).toFixed(2);
+  state.boardConfidence = 95;
 
   state.logs.unshift({
     id: 'log_ipo_' + Math.random().toString(36).substring(2, 7),
@@ -939,7 +1201,7 @@ export function launchIPO(prevState: CompanyState): CompanyState {
 }
 
 export function resolveEvent(prevState: CompanyState, choiceIndex: number): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const evt = state.pendingEvent;
   if (!evt) return prevState;
 
@@ -977,14 +1239,17 @@ export function resolveEvent(prevState: CompanyState, choiceIndex: number): Comp
 }
 
 export function buyoutCompetitor(prevState: CompanyState, competitorId: string): CompanyState {
-  const state: CompanyState = JSON.parse(JSON.stringify(prevState));
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
   const comp = state.competitors.find(c => c.id === competitorId);
   if (!comp) return prevState;
 
   if (comp.health === 'acquired' || comp.health === 'bankrupt') return prevState;
-  if (state.cash < comp.buyoutCost) return prevState;
 
-  state.cash -= comp.buyoutCost;
+  const macro = ECONOMIC_CYCLES[state.economicCycle] || ECONOMIC_CYCLES.stable_growth;
+  const effectiveCost = Math.round(comp.buyoutCost * macro.buyoutDiscount);
+  if (state.cash < effectiveCost) return prevState;
+
+  state.cash -= effectiveCost;
   comp.health = 'acquired';
   state.reputation = Math.min(100, state.reputation + 15);
   state.brandAwareness = Math.min(100, state.brandAwareness + 20);
@@ -1000,8 +1265,74 @@ export function buyoutCompetitor(prevState: CompanyState, competitorId: string):
     id: 'log_buyout_' + Math.random().toString(36).substring(2, 7),
     week: state.week,
     type: 'success',
-    message: `🦈 M&A Deal Closed: Successfully acquired ${comp.name} for $${comp.buyoutCost.toLocaleString()}!`,
+    message: `🦈 M&A Deal Closed: Successfully acquired ${comp.name} for $${effectiveCost.toLocaleString()}!`,
   });
+
+  return state;
+}
+
+export function sabotageCompetitor(
+  prevState: CompanyState,
+  competitorId: string,
+  operation: 'poach' | 'comparative_ads' | 'patent_probe'
+): CompanyState {
+  const state: CompanyState = normalizeLegacyState(JSON.parse(JSON.stringify(prevState)));
+  const comp = state.competitors.find(c => c.id === competitorId);
+  if (!comp || comp.health === 'acquired' || comp.health === 'bankrupt') return prevState;
+
+  const costs = {
+    poach: 12000,
+    comparative_ads: 18000,
+    patent_probe: 25000,
+  };
+
+  const cost = costs[operation];
+  if (state.cash < cost) return prevState;
+
+  state.cash -= cost;
+
+  if (operation === 'poach') {
+    comp.valuation = Math.max(200000, Math.round(comp.valuation * 0.90));
+    comp.buyoutCost = Math.max(150000, Math.round(comp.buyoutCost * 0.90));
+    const starCandidate = generateCandidate('engineer', state.week + 25);
+    starCandidate.skill = Math.min(99, starCandidate.skill + 15);
+    starCandidate.name = `${starCandidate.name} (Ex-${comp.name.split(' ')[0]})`;
+    state.candidatePool.unshift(starCandidate);
+
+    state.logs.unshift({
+      id: 'log_sab_poach_' + Date.now(),
+      week: state.week,
+      type: 'success',
+      message: `🕵️ Headhunted lead architect from ${comp.name}! Added ${starCandidate.name} (Skill ${starCandidate.skill}) to your talent pipeline.`,
+    });
+  } else if (operation === 'comparative_ads') {
+    comp.marketShare = Math.max(2, comp.marketShare - 4);
+    comp.valuation = Math.max(200000, Math.round(comp.valuation * 0.88));
+    const live = state.products.find(p => p.status === 'live');
+    if (live) {
+      live.activeUsers += 650;
+    }
+    state.brandAwareness = Math.min(100, state.brandAwareness + 8);
+    state.logs.unshift({
+      id: 'log_sab_ads_' + Date.now(),
+      week: state.week,
+      type: 'success',
+      message: `🎯 Comparative Attack Campaign siphoned 650 active users directly from ${comp.name}!`,
+    });
+  } else if (operation === 'patent_probe') {
+    comp.valuation = Math.max(150000, Math.round(comp.valuation * 0.78));
+    comp.buyoutCost = Math.max(120000, Math.round(comp.buyoutCost * 0.78));
+    if (comp.health === 'surging') comp.health = 'stable';
+    else if (comp.health === 'stable') comp.health = 'struggling';
+    comp.headline = `${comp.name} reels from regulatory & patent compliance probe!`;
+
+    state.logs.unshift({
+      id: 'log_sab_probe_' + Date.now(),
+      week: state.week,
+      type: 'success',
+      message: `⚖️ Patent & Compliance Probe crippled ${comp.name}'s valuation (-22%) and lowered their buyout price!`,
+    });
+  }
 
   return state;
 }

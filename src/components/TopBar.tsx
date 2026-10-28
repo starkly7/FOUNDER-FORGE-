@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { CompanyState } from '../game/types';
-import { playClickSound, playCashSound } from '../game/audio';
+import { ECONOMIC_CYCLES } from '../game/constants';
+import { playClickSound } from '../game/audio';
 import { 
   Play, Pause, FastForward, Volume2, VolumeX, 
   Calendar, TrendingUp, TrendingDown, DollarSign, 
-  Save, AlertTriangle, ShieldAlert, Check
+  Save, AlertTriangle, Check, Trophy
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -13,6 +14,7 @@ interface TopBarProps {
   onToggleSound: () => void;
   onToggleAutoSpeed: (speed: 'pause' | 'normal' | 'fast') => void;
   onSaveGame: () => void;
+  onOpenAchievements: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -21,6 +23,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleSound,
   onToggleAutoSpeed,
   onSaveGame,
+  onOpenAchievements,
 }) => {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -35,6 +38,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const currentYear = Math.floor((state.week - 1) / 52) + 1;
   const currentQuarter = Math.floor(((state.week - 1) % 52) / 13) + 1;
   const weekInQuarter = ((state.week - 1) % 13) + 1;
+
+  const unlockedAchCount = state.achievements.filter(a => a.unlocked).length;
+  const macro = ECONOMIC_CYCLES[state.economicCycle] || ECONOMIC_CYCLES.stable_growth;
 
   const handleSave = () => {
     playClickSound(state.settings.soundEnabled);
@@ -58,25 +64,43 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/95 border-b border-slate-800/80 px-3 py-2.5 shadow-md">
-      {/* Top row: Company Name, Date, Sound & Save */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Top row: Company Name, Macro Cycle, Date, Trophy, Sound & Save */}
+      <div className="flex items-center justify-between mb-2 gap-1">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-black text-sm tracking-tight text-white truncate max-w-[140px]">
+          <span className="font-black text-sm tracking-tight text-white truncate max-w-[115px]">
             {state.companyName}
           </span>
-          {state.isPublic && (
-            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">
+          {state.isPublic ? (
+            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">
               NASDAQ
+            </span>
+          ) : (
+            <span className="bg-slate-900 text-slate-300 border border-slate-800 text-[9px] font-mono px-1.5 py-0.5 rounded truncate max-w-[105px]">
+              {macro.badge}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Calendar Date Tag */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-2 py-1 rounded-md text-[11px] font-mono text-slate-300">
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-1.5 py-1 rounded-md text-[10px] font-mono text-slate-300">
             <Calendar className="w-3 h-3 text-cyan-400" />
             <span>Y{currentYear} Q{currentQuarter} W{weekInQuarter}</span>
           </div>
+
+          {/* Achievements Trophy Button */}
+          <button
+            type="button"
+            aria-label="Open Achievements Hall of Fame"
+            onClick={() => {
+              playClickSound(state.settings.soundEnabled);
+              onOpenAchievements();
+            }}
+            className="px-1.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 transition flex items-center gap-1 text-[10px] font-mono font-bold"
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            <span>{unlockedAchCount}</span>
+          </button>
 
           {/* Sound Toggle */}
           <button

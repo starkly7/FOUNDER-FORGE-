@@ -1,28 +1,33 @@
 import React, { useState } from 'react';
 import { CompanyState } from '../../game/types';
-import { OFFICE_TIERS, INDUSTRIES, FOUNDER_TRAITS } from '../../game/constants';
-import { playClickSound, playCashSound } from '../../game/audio';
+import { OFFICE_TIERS, INDUSTRIES, FOUNDER_TRAITS, ECONOMIC_CYCLES } from '../../game/constants';
+import { playClickSound, playCashSound, playSuccessSound } from '../../game/audio';
 import { 
-  AlertCircle, Sparkles, Building2, ShieldCheck, 
-  Activity, Award, Coffee, Zap, TrendingUp, Users
+  AlertCircle, Activity, Zap, Mic, ShieldCheck, Globe2
 } from 'lucide-react';
 
 interface OverviewTabProps {
   state: CompanyState;
   onOpenEventModal: () => void;
   onQuickAction: (actionType: 'pizza_party' | 'hackathon' | 'security_audit') => void;
+  onHostEarningsCall: (strategy: 'conservative' | 'balanced' | 'audacious') => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   state,
   onOpenEventModal,
   onQuickAction,
+  onHostEarningsCall,
 }) => {
   const [logFilter, setLogFilter] = useState<'all' | 'warning' | 'success'>('all');
 
   const office = OFFICE_TIERS[state.officeLevel] || OFFICE_TIERS[0];
   const industry = INDUSTRIES[state.industry];
   const founderTrait = FOUNDER_TRAITS.find(t => t.id === state.founderTrait);
+  const macro = ECONOMIC_CYCLES[state.economicCycle] || ECONOMIC_CYCLES.stable_growth;
+
+  const canHostEarnings = state.lastEarningsCallWeek === 0 || (state.week - state.lastEarningsCallWeek >= 6);
+  const cooldownWeeks = Math.max(0, 6 - (state.week - state.lastEarningsCallWeek));
 
   // Financial history for sparkline
   const history = state.financialHistory.slice(-16);
@@ -35,6 +40,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     if (logFilter === 'success') return log.type === 'success';
     return true;
   });
+
+  const unlockedRegionsCount = state.regions.filter(r => r.unlocked).length;
 
   return (
     <div className="space-y-3.5 pb-20">
@@ -92,6 +99,28 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
+        {/* Board Confidence & Macro Climate Bar */}
+        <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-slate-400 font-medium flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" /> Board Confidence
+            </span>
+            <span className="font-mono font-bold text-cyan-400">{state.boardConfidence}%</span>
+          </div>
+          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+            <div
+              className={`h-full rounded-full transition-all ${
+                state.boardConfidence >= 70 ? 'bg-emerald-500' : state.boardConfidence >= 40 ? 'bg-amber-500' : 'bg-rose-500'
+              }`}
+              style={{ width: `${state.boardConfidence}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+            <span>Macro Climate: <strong className="text-slate-200">{macro.name}</strong></span>
+            <span className="font-mono text-emerald-400">Regions: {unlockedRegionsCount}/6</span>
+          </div>
+        </div>
+
         {/* Vital Gauges */}
         <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-800/80">
           <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800 text-center">
@@ -134,12 +163,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         {history.length > 2 ? (
           <div className="h-24 w-full relative pt-2">
             <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 50">
-              {/* Grid lines */}
               <line x1="0" y1="12" x2="100" y2="12" stroke="rgba(255,255,255,0.05)" strokeDasharray="2" />
               <line x1="0" y1="25" x2="100" y2="25" stroke="rgba(255,255,255,0.05)" strokeDasharray="2" />
               <line x1="0" y1="38" x2="100" y2="38" stroke="rgba(255,255,255,0.05)" strokeDasharray="2" />
 
-              {/* Revenue line */}
               <polyline
                 fill="none"
                 stroke="#10b981"
@@ -155,7 +182,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   .join(' ')}
               />
 
-              {/* Cash line */}
               <polyline
                 fill="none"
                 stroke="#06b6d4"
@@ -177,6 +203,62 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             Advance turns to populate financial chart telemetry...
           </div>
         )}
+      </div>
+
+      {/* Investor Relations & Quarterly Keynote */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2.5 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <Mic className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Investor Relations & Guidance Call</span>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400">
+            {canHostEarnings ? 'Ready to Broadcast' : `Cooldown: ${cooldownWeeks}w`}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            disabled={!canHostEarnings}
+            onClick={() => {
+              playSuccessSound(state.settings.soundEnabled);
+              onHostEarningsCall('conservative');
+            }}
+            className="p-2 bg-slate-950/80 hover:bg-slate-800 disabled:opacity-40 border border-slate-800 rounded-lg text-left transition active:scale-95"
+          >
+            <div className="text-xs font-bold text-white">Disciplined</div>
+            <div className="text-[10px] text-emerald-400 font-mono mt-0.5">+5% Val · +8 Board</div>
+            <div className="text-[9px] text-slate-400 mt-0.5">Safe & Steady</div>
+          </button>
+
+          <button
+            type="button"
+            disabled={!canHostEarnings}
+            onClick={() => {
+              playSuccessSound(state.settings.soundEnabled);
+              onHostEarningsCall('balanced');
+            }}
+            className="p-2 bg-slate-950/80 hover:bg-slate-800 disabled:opacity-40 border border-slate-800 rounded-lg text-left transition active:scale-95"
+          >
+            <div className="text-xs font-bold text-white">Growth Keynote</div>
+            <div className="text-[10px] text-cyan-400 font-mono mt-0.5">+12% Val · +8 Brand</div>
+            <div className="text-[9px] text-slate-400 mt-0.5">Product Roadmap</div>
+          </button>
+
+          <button
+            type="button"
+            disabled={!canHostEarnings}
+            onClick={() => {
+              playSuccessSound(state.settings.soundEnabled);
+              onHostEarningsCall('audacious');
+            }}
+            className="p-2 bg-slate-950/80 hover:bg-slate-800 disabled:opacity-40 border border-slate-800 rounded-lg text-left transition active:scale-95"
+          >
+            <div className="text-xs font-bold text-white">Moonshot Hype</div>
+            <div className="text-[10px] text-amber-400 font-mono mt-0.5">+25% Val (Req 55 Rep)</div>
+            <div className="text-[9px] text-slate-400 mt-0.5">High Stakes</div>
+          </button>
+        </div>
       </div>
 
       {/* Quick Executive Operations */}

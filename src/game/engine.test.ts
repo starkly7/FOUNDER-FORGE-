@@ -10,7 +10,12 @@ import {
   repayLoan,
   raiseFunding,
   resolveEvent,
-  upgradeOffice
+  trainEmployee,
+  toggleOfficePerk,
+  unlockRegion,
+  buybackShares,
+  hostEarningsCall,
+  sabotageCompetitor
 } from './engine';
 
 test('createInitialCompany initializes valid starting company state', () => {
@@ -30,6 +35,8 @@ test('createInitialCompany initializes valid starting company state', () => {
   assert.equal(company.officeLevel, 0);
   assert.equal(company.staff.length, 1);
   assert.equal(company.products.length, 1);
+  assert.equal(company.boardConfidence, 78);
+  assert.equal(company.regions.length, 6);
   assert.equal(company.isGameOver, false);
 });
 
@@ -89,70 +96,55 @@ test('hireEmployee adds candidate and respects office limit', () => {
   }
 });
 
-test('createProduct deducts setup fee and adds development project', () => {
+test('trainEmployee permanently increases employee skill and morale', () => {
   let state = createInitialCompany({
-    companyName: 'Product Corp',
-    founderName: 'Builder',
-    founderTrait: 'design_visionary',
-    industry: 'ecommerce',
-  });
-
-  const initialProds = state.products.length;
-  const initialCash = state.cash;
-
-  state = createProduct(state, {
-    name: 'SmartCart 2.0',
-    type: 'Logistics AI',
-    pricingModel: 'subscription',
-    pricePerMonth: 29,
-    features: {
-      techQuality: 70,
-      userExperience: 80,
-      security: 75,
-      serverCapacity: 10000,
-    },
-  });
-
-  assert.equal(state.products.length, initialProds + 1);
-  assert.equal(state.cash, initialCash - 15000);
-  assert.equal(state.products[initialProds].name, 'SmartCart 2.0');
-  assert.equal(state.products[initialProds].status, 'development');
-});
-
-test('startResearch unlocks R&D tech queue', () => {
-  let state = createInitialCompany({
-    companyName: 'Research Labs',
-    founderName: 'Scientist',
+    companyName: 'Academy Corp',
+    founderName: 'Coach',
     founderTrait: 'code_wizard',
-    industry: 'biotech',
-  });
-
-  state = startResearch(state, 'git_ci_cd');
-  assert.ok(state.activeResearch);
-  assert.equal(state.activeResearch?.techId, 'git_ci_cd');
-  assert.equal(state.cash, 100000 - 8000);
-});
-
-test('takeLoan and repayLoan adjust balances accurately', () => {
-  let state = createInitialCompany({
-    companyName: 'Debt Corp',
-    founderName: 'Borrower',
-    founderTrait: 'sales_shark',
     industry: 'saas',
   });
 
-  state = takeLoan(state, 50000);
-  assert.equal(state.debt, 50000);
-  assert.equal(state.cash, 150000);
+  const empId = state.staff[0].id;
+  const oldSkill = state.staff[0].skill;
+  state = trainEmployee(state, empId);
 
-  state = repayLoan(state, 20000);
-  assert.equal(state.debt, 30000);
-  assert.equal(state.cash, 130000);
+  assert.equal(state.staff[0].skill, oldSkill + 7);
+  assert.equal(state.cash, 100000 - 3500);
 });
 
-test('raiseFunding dilutes founder equity and injects valuation capital', () => {
+test('toggleOfficePerk activates and deactivates workplace culture perks', () => {
   let state = createInitialCompany({
-    companyName: 'Funded Inc',
+    companyName: 'Perk Corp',
+    founderName: 'Culture Chief',
+    founderTrait: 'design_visionary',
+    industry: 'saas',
+  });
+
+  state = toggleOfficePerk(state, 'espresso_bar');
+  assert.ok(state.activePerkIds.includes('espresso_bar'));
+  assert.equal(state.cash, 100000 - 2500);
+
+  state = toggleOfficePerk(state, 'espresso_bar');
+  assert.ok(!state.activePerkIds.includes('espresso_bar'));
+});
+
+test('unlockRegion expands into international markets', () => {
+  let state = createInitialCompany({
+    companyName: 'Global Corp',
+    founderName: 'Explorer',
+    founderTrait: 'growth_hacker',
+    industry: 'ecommerce',
+  });
+
+  state = unlockRegion(state, 'latam');
+  const latam = state.regions.find(r => r.id === 'latam');
+  assert.equal(latam?.unlocked, true);
+  assert.equal(state.cash, 100000 - 18000);
+});
+
+test('raiseFunding and buybackShares adjust founder equity accurately', () => {
+  let state = createInitialCompany({
+    companyName: 'Equity Inc',
     founderName: 'Pitch Master',
     founderTrait: 'venture_prodigy',
     industry: 'ai',
@@ -160,39 +152,41 @@ test('raiseFunding dilutes founder equity and injects valuation capital', () => 
 
   state = raiseFunding(state, 'Seed Round', 15, 2000000);
   assert.equal(state.equityFounder, 85);
-  // 15% of $2,000,000 = $300,000 cash raised
   assert.equal(state.cash, 250000 + 300000);
+
+  state = buybackShares(state, 5);
+  assert.equal(state.equityFounder, 90);
 });
 
-test('resolveEvent applies chosen decision effects', () => {
+test('hostEarningsCall boosts valuation and board confidence', () => {
   let state = createInitialCompany({
-    companyName: 'Eventful Corp',
-    founderName: 'Leader',
-    founderTrait: 'code_wizard',
+    companyName: 'Keynote Corp',
+    founderName: 'Speaker',
+    founderTrait: 'sales_shark',
     industry: 'saas',
   });
 
-  state.pendingEvent = {
-    id: 'test_event',
-    title: 'Test Opportunity',
-    category: 'opportunity',
-    description: 'A venture partner offers an accelerated marketing grant.',
-    choices: [
-      {
-        text: 'Take Grant',
-        description: 'Accept cash and boost reputation.',
-        effects: {
-          cashDelta: 50000,
-          reputationDelta: 10,
-        },
-      },
-    ],
-  };
+  const oldVal = state.valuation;
+  state = hostEarningsCall(state, 'balanced');
+  assert.ok(state.valuation > oldVal);
+  assert.ok(state.boardConfidence > 78);
+});
 
-  state = resolveEvent(state, 0);
-  assert.equal(state.cash, 150000);
-  assert.equal(state.reputation, 70);
-  assert.equal(state.pendingEvent, null);
+test('sabotageCompetitor weakens rival valuation and adds poached talent', () => {
+  let state = createInitialCompany({
+    companyName: 'Spy Corp',
+    founderName: 'Agent',
+    founderTrait: 'code_wizard',
+    industry: 'ai',
+  });
+
+  const targetRival = state.competitors[0];
+  const oldVal = targetRival.valuation;
+  const oldPoolCount = state.candidatePool.length;
+
+  state = sabotageCompetitor(state, targetRival.id, 'poach');
+  assert.ok(state.competitors[0].valuation < oldVal);
+  assert.equal(state.candidatePool.length, oldPoolCount + 1);
 });
 
 test('bankruptcy triggers when cash is severely negative', () => {

@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
-import { CompanyState, Competitor, TechNode } from '../../game/types';
+import { CompanyState } from '../../game/types';
 import { TECH_TREE } from '../../game/techTree';
+import { ECONOMIC_CYCLES } from '../../game/constants';
 import { playClickSound, playCashSound, playSuccessSound } from '../../game/audio';
 import { 
-  Globe2, Cpu, ShieldCheck, CheckCircle2, 
-  Lock, ArrowRight, TrendingUp, AlertTriangle, Sparkles 
+  Globe2, Cpu, Sparkles, Crosshair, UserPlus, Scale 
 } from 'lucide-react';
 
 interface RivalsTabProps {
   state: CompanyState;
   onStartResearch: (techId: string) => void;
   onBuyoutCompetitor: (competitorId: string) => void;
+  onSabotageCompetitor: (competitorId: string, operation: 'poach' | 'comparative_ads' | 'patent_probe') => void;
 }
 
 export const RivalsTab: React.FC<RivalsTabProps> = ({
   state,
   onStartResearch,
   onBuyoutCompetitor,
+  onSabotageCompetitor,
 }) => {
   const [subView, setSubView] = useState<'rivals' | 'tech'>('rivals');
 
@@ -24,6 +26,8 @@ export const RivalsTab: React.FC<RivalsTabProps> = ({
   const competitorTotalVal = state.competitors.reduce((acc, c) => acc + (c.health !== 'acquired' ? c.valuation : 0), 0);
   const totalMarketVal = competitorTotalVal + state.valuation;
   const companyMarketShare = Math.min(99, Math.max(1, Math.round((state.valuation / totalMarketVal) * 100)));
+
+  const macro = ECONOMIC_CYCLES[state.economicCycle] || ECONOMIC_CYCLES.stable_growth;
 
   return (
     <div className="space-y-3.5 pb-20">
@@ -99,15 +103,16 @@ export const RivalsTab: React.FC<RivalsTabProps> = ({
             </div>
           </div>
 
-          {/* Competitor List & M&A Buyouts */}
-          <div className="space-y-2">
+          {/* Competitor List, Covert Ops & M&A Buyouts */}
+          <div className="space-y-2.5">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Rival Corporations & M&A Targets
+              Rival Corporations, Espionage & M&A Targets
             </div>
 
             {state.competitors.map((comp) => {
               const isAcquired = comp.health === 'acquired';
-              const canBuyout = !isAcquired && state.cash >= comp.buyoutCost;
+              const effectiveBuyoutCost = Math.round(comp.buyoutCost * macro.buyoutDiscount);
+              const canBuyout = !isAcquired && state.cash >= effectiveBuyoutCost;
 
               return (
                 <div
@@ -156,24 +161,75 @@ export const RivalsTab: React.FC<RivalsTabProps> = ({
                   </div>
 
                   {!isAcquired && (
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
-                      <span className="text-xs text-slate-400 font-mono">
-                        Buyout Price: <strong className="text-amber-400">${comp.buyoutCost.toLocaleString()}</strong>
-                      </span>
+                    <>
+                      {/* Covert Competitive Maneuvers */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          disabled={state.cash < 12000}
+                          onClick={() => {
+                            playCashSound(state.settings.soundEnabled);
+                            onSabotageCompetitor(comp.id, 'poach');
+                          }}
+                          className="p-1.5 bg-slate-950 hover:bg-slate-800 disabled:opacity-35 border border-slate-800 rounded-lg text-left transition active:scale-95"
+                        >
+                          <div className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
+                            <UserPlus className="w-3 h-3" /> Headhunt
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono">$12k · Poach Dev</div>
+                        </button>
 
-                      <button
-                        type="button"
-                        disabled={!canBuyout}
-                        onClick={() => {
-                          playSuccessSound(state.settings.soundEnabled);
-                          onBuyoutCompetitor(comp.id);
-                        }}
-                        className="bg-amber-500 hover:bg-amber-400 disabled:opacity-30 text-slate-950 font-bold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm active:scale-95"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Acquire Company</span>
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          disabled={state.cash < 18000}
+                          onClick={() => {
+                            playCashSound(state.settings.soundEnabled);
+                            onSabotageCompetitor(comp.id, 'comparative_ads');
+                          }}
+                          className="p-1.5 bg-slate-950 hover:bg-slate-800 disabled:opacity-35 border border-slate-800 rounded-lg text-left transition active:scale-95"
+                        >
+                          <div className="text-[10px] font-bold text-emerald-300 flex items-center gap-1">
+                            <Crosshair className="w-3 h-3" /> Attack Ads
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono">$18k · Steal Users</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={state.cash < 25000}
+                          onClick={() => {
+                            playCashSound(state.settings.soundEnabled);
+                            onSabotageCompetitor(comp.id, 'patent_probe');
+                          }}
+                          className="p-1.5 bg-slate-950 hover:bg-slate-800 disabled:opacity-35 border border-slate-800 rounded-lg text-left transition active:scale-95"
+                        >
+                          <div className="text-[10px] font-bold text-rose-300 flex items-center gap-1">
+                            <Scale className="w-3 h-3" /> Patent Probe
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-mono">$25k · -22% Val</div>
+                        </button>
+                      </div>
+
+                      {/* M&A Buyout Row */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                        <span className="text-xs text-slate-400 font-mono">
+                          Buyout Price: <strong className="text-amber-400">${effectiveBuyoutCost.toLocaleString()}</strong>
+                        </span>
+
+                        <button
+                          type="button"
+                          disabled={!canBuyout}
+                          onClick={() => {
+                            playSuccessSound(state.settings.soundEnabled);
+                            onBuyoutCompetitor(comp.id);
+                          }}
+                          className="bg-amber-500 hover:bg-amber-400 disabled:opacity-30 text-slate-950 font-bold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 transition shadow-sm active:scale-95"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Acquire Company</span>
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               );
